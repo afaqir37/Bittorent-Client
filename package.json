@@ -1,0 +1,20 @@
+{
+  "name": "bittorent-client",
+  "version": "1.0.0",
+  "description": "BitTorrent is a protocol used for downloading and distributing files across the Internet. Unlike the traditional client/server model where downloaders connect to a central server (such as watching a movie on Netflix, or loading the web page you're reading now), BitTorrent operates differently.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/afaqir37/Bittorent-Client.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/afaqir37/Bittorent-Client/issues"
+  },
+  "homepage": "https://github.com/afaqir37/Bittorent-Client#readme"
+}
