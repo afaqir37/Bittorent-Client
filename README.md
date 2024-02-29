@@ -28,7 +28,7 @@ console.log(torrent.toString('utf8'));
 **readFileSync** is the easiest way to read the contents of a file. But if you run this code you’ll realize that **readFileSync** returns a buffer , not a string. Later on you’ll see that all our network messages are sent and received in the form of buffers, so it’s important that you have a good understanding of how they work. The short story is that buffers represent a sequence of raw bytes. If you want to read the buffer as a string you have to specify an encoding scheme (you can see I used utf-8 above).
 
 The output should have looked something like this: 
-```
+```bash
 d8:announce43:udp://trackercoppersurfertk:6969announce10:createdby13:uTorrent187013:creationdatei1462355939e8:encoding5:UTF-84:infod6:lengthi124234e4:name9:puppy.jpg12:piecelengthi16384e6:pieces160:T�k�/�_(�Sh%���+]q'B�٠:����p"�j���1-g"�s(��V��=�h�ma�nF�ǩ�_�"2���'�wO��-;ע�ؑ��L&����0�D_9��     \��O�h,n5g�(��仑,�\߰�%��U����C>��df��ee
 ```
 
@@ -47,3 +47,5 @@ That should look a bit more familiar (except for the pieces property, which I’
 ```
 npm install --save bencode
 ```
+
+## Getting peers via the tracker

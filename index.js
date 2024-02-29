@@ -5,4 +5,6 @@ import bencode from 'bencode';
 
 
 const torrent = bencode.decode(fs.readFileSync('puppy.torrent'));
-console.log(torrent.announce.toString('utf8'));
+const numbers = torrent.announce.toString('utf8').split(',').map(Number);
+const string = numbers.map(number => String.fromCharCode(number)).join('');
+console.log(string); // output: udp://tracker.coppersurfer.tk:6969/announce
