@@ -2,7 +2,6 @@
 
 import dgram from 'dgram';
 import { Buffer } from 'buffer';
-import { parse as urlParse } from 'url';
 import { size } from './torrent-parser.js';
 import { genId } from './util.js';
 import { infoHash } from './torrent-parser.js';
@@ -18,7 +17,6 @@ import crypto from 'crypto';
 export const getPeers = (torrent, callback) => {
   const socket = dgram.createSocket('udp4');
   const url = String.fromCharCode(...Array.from(torrent.announce));
-  console.log(url);
 
   // 1. send connect request
   udpSend(socket, buildConnReq(), url);
@@ -42,7 +40,7 @@ export const getPeers = (torrent, callback) => {
 
 function udpSend(socket, message, rawUrl, callback=()=>{}) {
   const url = new URL(rawUrl);
-  socket.send(message, 0, message.length, url.port, url.host, callback);
+  socket.send(message, 0, message.length, url.port, url.hostname, callback);
 }
 
 function respType(resp) {
@@ -57,7 +55,7 @@ function buildConnReq() {
 
     // connection id
     buf.writeUInt32BE(0x417, 0);
-    buf.writeUInt32BE(0x27101980, 0);
+    buf.writeUInt32BE(0x27101980, 4);
 
     // action
     buf.writeUInt32BE(0, 8);
@@ -136,9 +134,8 @@ function parseAnnounceResp(resp) {
       return {
         action: resp.readUInt32BE(0),
         transactionId: resp.readUInt32BE(4),
-        interval: resp.readUInt32BE(8),
-        leechers: resp.readUInt32BE(12),
-        seeders: resp.readUInt32BE(16),
+        leechers: resp.readUInt32BE(8),
+        seeders: resp.readUInt32BE(12),
         peers: group(resp.slice(20), 6).map(address => {
           return {
             ip: address.slice(0, 4).join('.'),
