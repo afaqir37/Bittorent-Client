@@ -1,10 +1,10 @@
 
 'use strict';
-import fs from 'fs';
-import bencode from 'bencode';
+const tracker = require('./tracker');
+const torrentParser = require('./torrent-parser');
 
+const torrent = torrentParser.open('puppy.torrent');
 
-const torrent = bencode.decode(fs.readFileSync('puppy.torrent'));
-const numbers = torrent.announce.toString('utf8').split(',').map(Number);
-const string = numbers.map(number => String.fromCharCode(number)).join('');
-console.log(string); // output: udp://tracker.coppersurfer.tk:6969/announce
+tracker.getPeers(torrent, peers => {
+    console.log('list of peers: ', peers);
+});
