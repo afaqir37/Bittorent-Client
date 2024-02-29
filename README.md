@@ -69,3 +69,44 @@ The main reason that most trackers now use udp is that udp has better performanc
 The main difference is that tcp guarantees that when a user sends data, the other user will recieve that data in its entirety, uncorrupted, and in the correct order – but it must create a persistent connection between users before sending data and this can make tcp much slower than udp. In the case of upd, if the data being sent is small enough (less than 512 bytes) you don’t have to worry about receiving only part of the data or receiving data out of order. However, as we’ll see shortly, it’s possible that data sent will never reach its destination, and so you sometimes end up having to resend or re-request data.
 
 For these reasons, udp is often a good choice for trackers because they send small messages, and we use tcp for when we actually transfer files between peers because those files tend to be larger and must arrive intact.
+
+## UDP tracker protocol and message format
+
+The 0x41727101980 is a constant defined by the BitTorrent protocol for the initial connection ID used in the UDP tracker protocol.
+
+When a client wants to make a connection request to a tracker, it needs to send a specific message format. The first 64 bits of this message should be this connection ID (0x41727101980).
+
+The tracker, upon receiving this message, recognizes this as a connection request due to this specific connection ID. After the initial connection is established, the tracker provides a different connection ID to be used for the rest of the session.
+
+In order to get a list of peers from the tracker, the tracker will be expecting messages to follow a specific protocol. In short you must:
+
+    Send a connect request
+    Get the connect response and extract the connection id
+    Use the connection id to send an announce request - this is where we tell the tracker which files we’re interested in
+    Get the announce response and extract the peers list
+
+## Connect messaging
+
+Now let’s take a look at actually building the messages. Each message is a buffer with a specific format described in the BEP. Let’s take a look at the connect request first.
+
+The BEP describes the connect request as follows:
+```
+Offset  Size            Name            Value
+0       64-bit integer  connection_id   0x41727101980
+8       32-bit integer  action          0 // connect
+12      32-bit integer  transaction_id  ? // random
+16
+```
+
+This tells us that our message should start out with a 64-bit (i.e. 8 bytes) integer at index 0, and that the value should be 0x41727101980. Since we just write 8 bytes, the index of the next part is 8. Now we write 32-bit integer (4 bytes) with the value 0. This moves us up to an offset of 12 bytes, and we write a random 32-bit integer. So the total message length is 8 bytes + 4 bytes + 4bytes = 16 bytes long.
+
+Parsing the response is much simpler. Here’s how the response is formatted:
+
+```
+Offset  Size            Name            Value
+0       32-bit integer  action          0 // connect
+4       32-bit integer  transaction_id
+8       64-bit integer  connection_id
+16
+```
+
