@@ -49,3 +49,23 @@ npm install --save bencode
 ```
 
 ## Getting peers via the tracker
+
+```javascript
+
+const torrent = bencode.decode(fs.readFileSync('puppy.torrent'));
+const numbers = torrent.announce.toString('utf8').split(',').map(Number);
+const string = numbers.map(number => String.fromCharCode(number)).join('');
+console.log(string); // output: udp://tracker.coppersurfer.tk:6969/announce
+```
+
+In the code above I console.log the announce property of the torrent. For this particular file it happens to be udp://tracker.coppersurfer.tk:6969/announce. The announce url is what I’ve been calling the tracker’s url, it is the location of the torrent’s tracker.
+
+One interesting thing you’ll notice is that instead of the usual ‘http’ in front, this url has ‘udp’. This is because instead of the http protocol, you must use the udp protocol. It used to be that all trackers used http, but nowadays nearly all new torrents are using udp. So what’s the difference between the two protocols, and why switch to udp?
+
+### Http vs udp vs tcp
+
+The main reason that most trackers now use udp is that udp has better performance than http. Http is built on top of another protocol called tcp, which we’ll use later in the project when we start actually downloading files from peers. So what’s the difference between tcp and udp?
+
+The main difference is that tcp guarantees that when a user sends data, the other user will recieve that data in its entirety, uncorrupted, and in the correct order – but it must create a persistent connection between users before sending data and this can make tcp much slower than udp. In the case of upd, if the data being sent is small enough (less than 512 bytes) you don’t have to worry about receiving only part of the data or receiving data out of order. However, as we’ll see shortly, it’s possible that data sent will never reach its destination, and so you sometimes end up having to resend or re-request data.
+
+For these reasons, udp is often a good choice for trackers because they send small messages, and we use tcp for when we actually transfer files between peers because those files tend to be larger and must arrive intact.
