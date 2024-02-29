@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/afaqir37/Bittorent-Client#readme",
   "dependencies": {
-    "bencode": "^4.0.0"
+    "bencode": "^4.0.0",
+    "bignum": "^0.13.1"
   }
 }

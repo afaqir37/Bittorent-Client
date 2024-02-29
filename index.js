@@ -1,10 +1,14 @@
 
 'use strict';
-const tracker = require('./tracker');
-const torrentParser = require('./torrent-parser');
 
-const torrent = torrentParser.open('puppy.torrent');
+import { getPeers } from './tracker.js';
+import { open } from './torrent-parser.js';
 
-tracker.getPeers(torrent, peers => {
+// const tracker = require('./tracker');
+// const torrentParser = require('./torrent-parser');
+
+const torrent = open('game.torrent');
+
+getPeers(torrent, peers => {
     console.log('list of peers: ', peers);
 });

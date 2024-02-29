@@ -134,3 +134,62 @@ Offset  Size    Name    Value
 
 Now let’s take a look at parsing the response:
 
+```
+Offset      Size            Name            Value
+0           32-bit integer  action          1 // announce
+4           32-bit integer  transaction_id
+8           32-bit integer  interval
+12          32-bit integer  leechers
+16          32-bit integer  seeders
+20 + 6 * n  32-bit integer  IP address
+24 + 6 * n  16-bit integer  TCP port
+20 + 6 * N
+```
+
+It’s a bit tricky because the number of addresses that come back isn’t fixed. The addresses come in groups of 6 bytes, the first 4 represent the IP address and the next 2 represent the port. So our code will need to correctly break up the addresses part of the response.
+
+```javascript
+function parseAnnounceResp(resp) {
+    function group(iterable, groupSize) {
+        let groups = [];
+        for (let i = 0; i < iterable.length; i += groupSize) {
+          groups.push(iterable.slice(i, i + groupSize));
+        }
+        return groups;
+      }
+
+
+      return {
+        action: resp.readUInt32BE(0),
+        transactionId: resp.readUInt32BE(4),
+        interval: resp.readUInt32BE(8),
+        leechers: resp.readUInt32BE(12),
+        seeders: resp.readUInt32BE(16),
+        peers: group(resp.slice(20), 6).map(address => {
+          return {
+            ip: address.slice(0, 4).join('.'),
+            port: address.readUInt16BE(4)
+          }
+        })
+      }
+}
+```
+
+### Info Hash
+
+Now let’s go back to when we first opened the torrent file. Remember it looked something like this:
+
+```
+'{"announce":"udp://tracker.coppersurfer.tk:6969/announce","created by":"uTorrent/1870","creation date":1462355939,"encoding":"UTF-8","info":{"length":124234,"name":"puppy.jpg","piece length":16384,"pieces":"T�k�/�_(�S\\u0011h%���+]q\'B\\u0018�٠:����p\\"�j���1-g\\"\\u0018�s(\\u001b\\u000f���V��=�h�m\\u0017a�nF�2���N\\r�ǩ�_�\\u001e\\"2���\'�wO���-;\\u0004ע\\u0017�ؑ��L&����0\\u001f�D_9��\\t\\\\��O�h,n\\u001a5g�(��仑,�\\\\߰�%��U��\\u0019��C\\u0007>��df��"}}'
+```
+
+Last time we pulled the announce property from this object. Can you see that it also has an info property? If you were take the info property and pass it through a SHA1 hashing function, you would get the info hash! You can apply a SHA1 hash easily using the built-in crypto module.
+
+```javascript
+module.exports.infoHash = torrent => {
+  const info = bencode.encode(torrent.info);
+  return crypto.createHash('sha1').update(info).digest();
+};
+```
+
+Why use a SHA1 hashing function? SHA1 is one of many hashing functions but it’s the one used by bittorrent so in our case no other hashing function will do. We want to use a hash because it’s a compact way to uniqely identify the torrent. A hashing function returns a fixed length buffer (in this case 20-bytes long)
