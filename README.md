@@ -198,13 +198,13 @@ Why use a SHA1 hashing function? SHA1 is one of many hashing functions but it’
 
 Now that we’re able to get a list of peers for our files, we want to actually download the files from them. Here’s a basic overview of how this will work:
 
-    -First you’ll want to create a tcp connection with all the peers in your list.The more peers you can get connected to the faster you can download your files.
+- First you’ll want to create a tcp connection with all the peers in your list.The more peers you can get connected to the faster you can download your files.
 
-    -After exchanging some messages with the peer as setup, you should start requesting pieces of the files you want. As we’ll see shortly, a torrent’s shared files are broken up into pieces so that you can download different parts of the files from different peers simultaneously.
+- After exchanging some messages with the peer as setup, you should start requesting pieces of the files you want. As we’ll see shortly, a torrent’s shared files are broken up into pieces so that you can download different parts of the files from different peers simultaneously.
 
-    -Most likely there will be more pieces than peers, so once we’re done receiving a piece from a peer we’ll want to request the next piece we need from them. Ideally you want all the connections to be requesting different and new pieces so you’ll need to keep track of which pieces you already have and which ones you still need.
+- Most likely there will be more pieces than peers, so once we’re done receiving a piece from a peer we’ll want to request the next piece we need from them. Ideally you want all the connections to be requesting different and new pieces so you’ll need to keep track of which pieces you already have and which ones you still need.
 
-    -Finally, when you receive the pieces they’ll be stored in memory so you’ll need to write the data to your hard disk. Hopefully at this point you’ll be done!
+- Finally, when you receive the pieces they’ll be stored in memory so you’ll need to write the data to your hard disk. Hopefully at this point you’ll be done!
 
   
 ### TCP connect to peers
@@ -244,21 +244,21 @@ We use our getPeers method from the tracker.js file, and then for each peer we c
 
 Once a tcp connection is established the messages you send and receive have to follow the following protocol.
 
-    The first thing you want to do is let your peer know know which files you are interested in downloading from them, as well as some identifying info. If the peer doesn’t have the files you want they will close the connection, but if they do have the files they should send back a similar message as confirmation. This is called the “handshake”.
+- The first thing you want to do is let your peer know know which files you are interested in downloading from them, as well as some identifying info. If the peer doesn’t have the files you want they will close the connection, but if they do have the files they should send back a similar message as confirmation. This is called the “handshake”.
 
-    The most likely thing that will happen next is that the peer will let you know what pieces they have. This happens through the “have” and “bitfield” messages. Each “have” message contains a piece index as its payload. This means you will receive multiple have messages, one for each piece that your peer has.
+- The most likely thing that will happen next is that the peer will let you know what pieces they have. This happens through the “have” and “bitfield” messages. Each “have” message contains a piece index as its payload. This means you will receive multiple have messages, one for each piece that your peer has.
 
-    The bitfield message serves a similar purpose, but does it in a different way. The bitfield message can tell you all the pieces that the peer has in just one message. It does this by sending a string of bits, one for each piece in the file. The index of each bit is the same as the piece index, and if they have that piece it will be set to 1, if not it will be set to 0. For example if you receive a bitfield that starts with 011001… that means they have the pieces at index 1, 2, and 5, but not the pieces at index 0, 3,and 4.
+- The bitfield message serves a similar purpose, but does it in a different way. The bitfield message can tell you all the pieces that the peer has in just one message. It does this by sending a string of bits, one for each piece in the file. The index of each bit is the same as the piece index, and if they have that piece it will be set to 1, if not it will be set to 0. For example if you receive a bitfield that starts with 011001… that means they have the pieces at index 1, 2, and 5, but not the pieces at index 0, 3,and 4.
 
-    It’s possible to receive both “have” messages and a bitfield message, if which case you should combine them to get the full list of pieces.
+- It’s possible to receive both “have” messages and a bitfield message, if which case you should combine them to get the full list of pieces.
 
-    Actually it’s possible to recieve another kind of message, the peer might decide they don’t want to share with you! That’s what the choke, unchoke, interested, and not interested messages are for. If you are choked, that means the peer does not want to share with you, if you are unchoked then the peer is willing to share. On the other hand, interested means you want what your peer has, whereas not interested means you don’t want what they have.
+- Actually it’s possible to recieve another kind of message, the peer might decide they don’t want to share with you! That’s what the choke, unchoke, interested, and not interested messages are for. If you are choked, that means the peer does not want to share with you, if you are unchoked then the peer is willing to share. On the other hand, interested means you want what your peer has, whereas not interested means you don’t want what they have.
 
-    You always start out choked and not interested. So the first message you send should be the interested message. Then hopefully they will send you an unchoke message and you can move to the next step. If you receive a choke message message instead you can just let the connection drop.
+- You always start out choked and not interested. So the first message you send should be the interested message. Then hopefully they will send you an unchoke message and you can move to the next step. If you receive a choke message message instead you can just let the connection drop.
 
-    At this point you’re ready start requesting. You can do this by sending “request” messages, which contains the index of the piece that you want (more details on this in the next section).
+- At this point you’re ready start requesting. You can do this by sending “request” messages, which contains the index of the piece that you want (more details on this in the next section).
 
-    Finally you will receive a piece message, which will contain the bytes of data that you requested.
+- Finally you will receive a piece message, which will contain the bytes of data that you requested.
 
   ## Message Types
 
