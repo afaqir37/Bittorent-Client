@@ -554,18 +554,78 @@ function onWholeMsg(socket, callback) {
 
 here's a step-by-step explanation of the onWholeMsg function:
 
-  onWholeMsg is a function that takes two arguments: a socket and a callback function. The socket is used to receive data, and the callback function is called each time a whole message is received.
+- onWholeMsg is a function that takes two arguments: a socket and a callback function. The socket is used to receive data, and the callback function is called each time a whole message is received.
 
-  Inside onWholeMsg, a buffer savedBuf is initialized to hold the incoming data. The handshake variable is set to true to indicate that the first message (the handshake message) hasn't been received yet.
+- Inside onWholeMsg, a buffer savedBuf is initialized to hold the incoming data. The handshake variable is set to true to indicate that the first message (the handshake message) hasn't been received yet.
 
-  An event listener is set up on the socket to handle the 'data' event. This event is emitted whenever new data arrives on the socket. The event listener function takes the new data (recvBuf) as an argument.
+- An event listener is set up on the socket to handle the 'data' event. This event is emitted whenever new data arrives on the socket. The event listener function takes the new data (recvBuf) as an argument.
 
-  Inside the event listener function, a function msgLen is defined to calculate the length of a whole message. If handshake is true, it means this is the first message (the handshake message), and its length is calculated as savedBuf.readUInt8(0) + 49. If handshake is false, it means this is a regular message, and its length is calculated as savedBuf.readInt32BE(0) + 4.
+- Inside the event listener function, a function msgLen is defined to calculate the length of a whole message. If handshake is true, it means this is the first message (the handshake message), and its length is calculated as savedBuf.readUInt8(0) + 49. If handshake is false, it means this is a regular message, and its length is calculated as savedBuf.readInt32BE(0) + 4.
 
-  savedBuf is updated with the new data by concatenating savedBuf and recvBuf.
+- savedBuf is updated with the new data by concatenating savedBuf and recvBuf.
 
-  A while loop starts, which continues as long as savedBuf has at least 4 bytes and enough data for a whole message. Inside the loop, the callback function is called with the whole message, savedBuf is updated to remove the message that was just processed, and handshake is set to false to indicate that the handshake message has been received.
+- A while loop starts, which continues as long as savedBuf has at least 4 bytes and enough data for a whole message. Inside the loop, the callback function is called with the whole message, savedBuf is updated to remove the message that was just processed, and handshake is set to false to indicate that the handshake message has been received.
 
-  The while loop ensures that all complete messages in savedBuf are processed, even if multiple messages were received at once. If a message is only partially received, it will stay in savedBuf until the rest of the message arrives.
+- The while loop ensures that all complete messages in savedBuf are processed, even if multiple messages were received at once. If a message is only partially received, it will stay in savedBuf until the rest of the message arrives.
 
-  This function ensures that the callback is called with a whole message each time, regardless of how the data is broken up when it arrives on the socket.
+- This function ensures that the callback is called with a whole message each time, regardless of how the data is broken up when it arrives on the socket.
+
+  ## Pieces
+
+  After you establish the handshake your peers should tell you which pieces they have. Let’s take a moment to understand what pieces are exactly.
+
+If you open up a torrent file, we saw that it contains data with various properties like the “announce” and “info” properties. Another property is the “piece length” property. This tells you how long a piece is in bytes. Let’s say hypothetically that you have a piece length of 1000 bytes. Then if the total size of the file(s) is 12000 bytes, that means the file should have 12 pieces. Note that the last piece might not be the full 1000 bytes. If the file were 12001 bytes large, then it would be a total of 13 pieces, where the last piece is just 1 byte large.
+
+These pieces are indexed starting at 0, and this is how we know which piece it is that we are sending or receiving. For example, you might request the piece at index 0, that means from our previous example we want the first 1000 bytes of the file. If we ask for the piece at index 1, we want the second 1000 bytes and so on.
+
+## Handling messages
+
+Now I want to start handling messages that aren’t the handshake message. Since these messages have a set format, I can just check their id to figure out what message it is. In order to help me do this I wrote added a function to message.js for parsing message buffers into their parts:
+
+```javascript
+export const parse = msg => {
+    const id = msg.length > 4 ? msg.readInt8(4) : null;
+    let payload = msg.length > 5 ? msg.slice(5) : null;
+    if (id == 6 || id == 7 || id == 8) {
+        const rest = payload.slice(8);
+        payload = {
+            index: payload.readInt32BE(0),
+            begin: payload.readInt32BE(4)
+        };
+        payload[id == 7 ? 'block' : 'length'] = rest;
+    }
+
+    return {
+        size : msg.readInt32BE(0),
+        id : id,
+        payload: payload
+    }
+
+};
+```
+
+the parse() function is used to parse messages in a BitTorrent client. The messages are not handshake messages, but rather messages that follow a specific format. The function takes a Buffer object msg as an argument, which represents a message received from a peer.
+
+Here's a breakdown of what the function does:
+
+- It checks if the length of msg is greater than 4. If it is, it reads an 8-bit integer from the 5th byte (index 4) of msg and assigns it to id. If msg is not long enough, it assigns null to id.
+
+- It checks if the length of msg is greater than 5. If it is, it slices msg from the 6th byte (index 5) to the end and assigns it to payload. If msg is not long enough, it assigns null to payload.
+
+- If id is 6, 7, or 8, it further parses payload:
+
+  - It slices payload from the 9th byte (index 8) to the end and assigns it to rest.
+
+  - It reads two 32-bit integers from the start of payload and assigns them to payload.index and payload.begin.
+  
+  - If id is 7, it assigns rest to payload.block. If id is 6 or 8, it assigns rest to payload.length.
+
+- Finally, it returns an object with three properties:
+
+  - size: a 32-bit integer read from the start of msg.
+
+  - id: the id parsed earlier.
+
+  - payload: the payload parsed earlier.
+
+The id value represents the type of the message, and the payload contains the data of the message. The size variable holds the length of the entire message. This function is designed to parse messages according to the BitTorrent protocol, where each message has a specific structure and each byte has a specific meaning.
