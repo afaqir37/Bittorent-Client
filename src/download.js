@@ -17,8 +17,30 @@ function download(peer) {
         socket.write(message.buildHandshake(torrent));
     });
 
-    socket.on('data', data => {
+    onWholeMsg(socket, data => {
         // handle response here
+
+    });
+
+}
+
+function onWholeMsg(socket, callback) {
+    let savedBuf = Buffer.alloc(0);
+    let handshake = true;
+
+    socket.on('data', receivedBuf => {
+        const msgLen = () => handshake ? savedBuf.readUInt8(0) + 49 : savedBuf.readUInt32BE(0) + 4;
+        savedBuf = Buffer.concat(savedBuf, receivedBuf);
+
+        while(savedBuf.length >= 4 && savedBuf.length >= msgLen()) {
+            callback(savedBuf.subarray(0, savedBuf.length));
+            savedBuf = savedBuf.subarray(msgLen());
+            handshake = false;
+        }
+        
+        
+
+
     });
 
 }

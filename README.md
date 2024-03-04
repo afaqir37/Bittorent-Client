@@ -504,3 +504,68 @@ export const buildPort = payload => {
     return buf;
   };
 ```
+
+## Grouping messages
+
+Before going on to actually exchanging messages, there's one more thing I need to address about tcp. You may have assumed that every time you receive a data though a socket, it will be a single whole message. But this is not the case. Remember our code for receiving data looked like this:
+
+```javascript
+socket.on('data', receivedBuffer => {
+  // do stuff with receivedBuffer here
+});
+```
+
+The problem is that the callback gets passed data as it becomes available and there’s no way to know how that data will be broken up. The socket might recieve only part of one message, or it might receive multiple messages at once. This is why every message starts with its length, to help you find the start and end of each message.
+
+Things would be much easier for us if each time the callback was called it would get passed a single whole message, so I want to write a function onWhileMsg that will do just that for us.
+
+```javascript
+function download(peer) {
+  const socket = net.Socket();
+  socket.connect(peer.port, peer.ip, () => {
+    // socket.write(...) write a message here
+  });
+  onWholeMsg(socket, data => {
+    // handle response here
+  });
+}
+```
+
+Here is the implementation of **onWholeMsg**
+
+```javascript
+function onWholeMsg(socket, callback) {
+  let savedBuf = Buffer.alloc(0);
+  let handshake = true;
+
+  socket.on('data', recvBuf => {
+    // msgLen calculates the length of a whole message
+    const msgLen = () => handshake ? savedBuf.readUInt8(0) + 49 : savedBuf.readInt32BE(0) + 4;
+    savedBuf = Buffer.concat([savedBuf, recvBuf]);
+
+    while (savedBuf.length >= 4 && savedBuf.length >= msgLen()) {
+      callback(savedBuf.subarray(0, savedBuf.length));
+      savedBuf = savedBuf.subarray(msgLen());
+      handshake = false;
+    }
+  });
+}
+```
+
+here's a step-by-step explanation of the onWholeMsg function:
+
+  onWholeMsg is a function that takes two arguments: a socket and a callback function. The socket is used to receive data, and the callback function is called each time a whole message is received.
+
+  Inside onWholeMsg, a buffer savedBuf is initialized to hold the incoming data. The handshake variable is set to true to indicate that the first message (the handshake message) hasn't been received yet.
+
+  An event listener is set up on the socket to handle the 'data' event. This event is emitted whenever new data arrives on the socket. The event listener function takes the new data (recvBuf) as an argument.
+
+  Inside the event listener function, a function msgLen is defined to calculate the length of a whole message. If handshake is true, it means this is the first message (the handshake message), and its length is calculated as savedBuf.readUInt8(0) + 49. If handshake is false, it means this is a regular message, and its length is calculated as savedBuf.readInt32BE(0) + 4.
+
+  savedBuf is updated with the new data by concatenating savedBuf and recvBuf.
+
+  A while loop starts, which continues as long as savedBuf has at least 4 bytes and enough data for a whole message. Inside the loop, the callback function is called with the whole message, savedBuf is updated to remove the message that was just processed, and handshake is set to false to indicate that the handshake message has been received.
+
+  The while loop ensures that all complete messages in savedBuf are processed, even if multiple messages were received at once. If a message is only partially received, it will stay in savedBuf until the rest of the message arrives.
+
+  This function ensures that the callback is called with a whole message each time, regardless of how the data is broken up when it arrives on the socket.
