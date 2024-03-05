@@ -4,20 +4,22 @@ import { Buffer } from 'buffer';
 import { getPeers } from './tracker.js';
 import * as message from './message.js';
 
-module.exports = torrent => {
+export const downloadTorrent = torrent => {
+    const requested = [];
     getPeers(torrent, peers => {
-        peers.forEach(download);
+        peers.forEach(peer => download(peer, torrent, requested));
     });
 };
 
-function download(peer) {
+function download(peer, torrent, requested) {
+    const queue = [];
     const socket = net.Socket();
     socket.on('error', console.log);
     socket.connect(peer.port, peer.ip, () => {
         socket.write(message.buildHandshake(torrent));
     });
 
-    onWholeMsg(socket, msg => msgHandler(msg, socket));
+    onWholeMsg(socket, msg => msgHandler(msg, socket, requested, queue));
 
 }
 
@@ -43,7 +45,7 @@ function isHandshake(msg) {
            msg.toString('utf8', 1) === 'BitTorrent protocol';
   }
 
-function msgHandler(msg, socket) {
+function msgHandler(msg, socket, requested, queue) {
     if (isHandshake(msg))
         socket.write(message.buildInterested());
     else {
@@ -51,11 +53,34 @@ function msgHandler(msg, socket) {
 
         if (m.id == 0) chokeHandler();
         if (m.id == 1) unchokeHandler();
-        if (m.id == 4) haveHandler(m.payload);
+        if (m.id == 4) haveHandler(m.payload, requested, queue);
         if (m.id == 5) bitfieldHandler(m.payload);
-        if (m.id == 7) piecehandler(m.payload);
+        if (m.id == 7) pieceHandler(socket, m.payload, requested, queue);
     }
 
+}
+
+function haveHandler(payload, socket, requested, queue) {
+    //...
+    const pieceIndex = payload.readUInt32BE(0);
+    queue.push(pieceIndex);
+    if (queue.length == 1)
+        requestPiece(socket, requested, queue);
+}
+
+function pieceHandler(socket, payload, requested, queue) {
+    queue.shift();
+    requestPiece(socket, requested, queue);
+}
+
+function requestPiece(socket, requested, queue) {
+    if (requested[queue[0]])
+        queue.shift();
+    else {
+        requested[queue[0]] = true;
+        socket.write(buildRequest(...));
+    }
+        
 }
 
 

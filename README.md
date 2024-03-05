@@ -629,3 +629,95 @@ Here's a breakdown of what the function does:
   - payload: the payload parsed earlier.
 
 The id value represents the type of the message, and the payload contains the data of the message. The size variable holds the length of the entire message. This function is designed to parse messages according to the BitTorrent protocol, where each message has a specific structure and each byte has a specific meaning.
+
+## Managing connections and pieces
+
+This is a critical point in the project because managing the connections and pieces involves a lot of interesting decisions and tradeoffs. So far we’ve mostly been following the specs directly, but from now on there are many possible solutions and I’ll be going through just one. That’s why I recommend taking some time to consider how you would implement these message handlers yourself before continuing.
+
+Of course a big concern is efficiency. We want our downloads to finish as soon as possible. The tricky part about this is that not all peers will have all parts. Also not all peers can upload at the same rate. On top of that, it’s possible for connections to drop at any time, so we need a way of dealing with failed requests. How can we distribute the work of sharing the right pieces among all peers in order to have the fastest download speeds?
+
+### List of requested pieces
+
+First I would have a single list of all pieces that have already been requested that would get passed to each socket connection. Like this:
+
+```javascript
+export const downloadTorrent = torrent => {
+    const requested = [];
+    getPeers(torrent, peers => {
+        peers.forEach(peer => download(peer, torrent, requested));
+    });
+};
+
+function haveHandler(payload, socket, requested) {
+    //...
+    const pieceIndex = payload.readUInt32BE(0);
+    if (!requested[pieceIndex]) 
+        socket.write(buildRequest(...));
+    requested[pieceIndex] = true;
+}
+```
+
+The actual implementation of haveHandler will be more detailed than this, but you can see how the requested list will get passed through and how it will be used to determine whether or not a piece should be requested. You can also see that there is just a single list that is shared by all connections. Some of you may think that it’s inconvenient to have to pass the requested list to so many functions. Again, there’s more than one possible solution, so I encourage you to try you own.
+
+This doesn’t yet account for failed requests, but I’ll be addressing that in a later section.
+
+## Job queue
+
+Next I want to create a list per connection. This list will contain all the pieces that a single peer has. Why do we have to maintain this list? Why not just make a request for a piece as soon as we receive a “have” or “bitfield” message? The problem is that we would probaby end up requesting all the pieces from the very first peer we connect to and then since we don’t want to double request the same piece, none of the other peers would have pieces left to request.
+
+Even if it’s possible to use a round-robin strategy so that each peer only gets a second piece to request after all peers have gotten at least one piece to request, there is still a problem. This strategy would lead to all peers having the same number of requests, but some peers will inevitably upload faster than others. Ideally we want the fastest peers to get more requests, rather than have multiple requests bottlenecked by the slowest peer.
+
+A natural solution is to request just one or a few pieces from a peer at a time, and only make the next request after receiving a response. This way the faster peers will send their responses faster, “coming back” for more requests more frequently.
+
+However, because we recieve the “have” and “bitfield” messages all at once, this means we’ll have to store the list of pieces that the peer has. This is so that we can wait until the piece’s response come back, then we can reference the list to see what to request next.
+
+I refer to this as a job queue, because you can think of it like this: each connection has a list of pieces to request. They look at the first item on the list, and check if it’s in the list of already requested pieces or not. If not, they request the piece and wait for a response. Otherwise they discard the item and move on to the next one. When they receive a response, they move on to the next item on the list and repeat the process until the list is empty.
+
+**Example** <br>
+
+Next I want to create a list per connection. This list will contain all the pieces that a single peer has. Why do we have to maintain this list? Why not just make a request for a piece as soon as we receive a “have” or “bitfield” message? The problem is that we would probaby end up requesting all the pieces from the very first peer we connect to and then since we don’t want to double request the same piece, none of the other peers would have pieces left to request.
+
+Even if it’s possible to use a round-robin strategy so that each peer only gets a second piece to request after all peers have gotten at least one piece to request, there is still a problem. This strategy would lead to all peers having the same number of requests, but some peers will inevitably upload faster than others. Ideally we want the fastest peers to get more requests, rather than have multiple requests bottlenecked by the slowest peer.
+
+A natural solution is to request just one or a few pieces from a peer at a time, and only make the next request after receiving a response. This way the faster peers will send their responses faster, “coming back” for more requests more frequently.
+
+However, because we recieve the “have” and “bitfield” messages all at once, this means we’ll have to store the list of pieces that the peer has. This is so that we can wait until the piece’s response come back, then we can reference the list to see what to request next.
+
+I refer to this as a job queue, because you can think of it like this: each connection has a list of pieces to request. They look at the first item on the list, and check if it’s in the list of already requested pieces or not. If not, they request the piece and wait for a response. Otherwise they discard the item and move on to the next one. When they receive a response, they move on to the next item on the list and repeat the process until the list is empty.
+
+```javascript
+function haveHandler(payload, socket, requested, queue) {
+    //...
+    const pieceIndex = payload.readUInt32BE(0);
+    queue.push(pieceIndex);
+    if (queue.length == 1)
+        requestPiece(socket, requested, queue);
+}
+
+function pieceHandler(socket, payload, requested, queue) {
+    queue.shift();
+    requestPiece(socket, requested, queue);
+}
+
+function requestPiece(socket, requested, queue) {
+    if (requested[queue[0]])
+        queue.shift();
+    else {
+        requested[queue[0]] = true;
+        socket.write(buildRequest(...));
+    }
+        
+}
+```
+
+In this code, I'm using a strategy where you request one piece at a time from each peer, rather than requesting all pieces from the first peer you connect to. This is done to optimize the download speed by leveraging the fact that different peers may send data at different rates.
+
+Here's how it works in your code:
+
+- When you receive a "have" message (indicating a peer has a piece), you add the piece to that peer's queue (queue.push(pieceIndex);).
+
+- If this is the first piece in the queue, you request it (if (queue.length == 1) requestPiece(socket, requested, queue);).
+
+- When you receive the piece, you remove it from the queue and request the next piece in the queue.
+
+This way, I'm only requesting one piece at a time from each peer. Faster peers will finish sending their piece sooner, and you'll request the next piece from them sooner. This allows faster peers to send more pieces over the same amount of time, speeding up the overall download.
