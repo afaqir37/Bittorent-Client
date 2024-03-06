@@ -8,6 +8,7 @@ import { open } from './torrent-parser.js';
 // const torrentParser = require('./torrent-parser');
 
 const torrent = open(process.argv[2]);
+console.log(torrent.info);
 
 getPeers(torrent, peers => {
     console.log('list of peers: ', peers);

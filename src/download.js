@@ -46,19 +46,28 @@ function isHandshake(msg) {
            msg.toString('utf8', 1) === 'BitTorrent protocol';
   }
 
-function msgHandler(msg, socket, requested, queue) {
+function msgHandler(msg, socket, pieces, queue) {
     if (isHandshake(msg))
         socket.write(message.buildInterested());
     else {
         const m = message.parse(msg);
 
-        if (m.id == 0) chokeHandler();
-        if (m.id == 1) unchokeHandler();
+        if (m.id == 0) chokeHandler(socket);
+        if (m.id == 1) unchokeHandler(socket, pieces, queue);
         if (m.id == 4) haveHandler(m.payload, pieces, queue);
         if (m.id == 5) bitfieldHandler(m.payload);
         if (m.id == 7) pieceHandler(socket, m.payload, pieces, queue);
     }
 
+}
+
+function chokeHandler(socket) {
+    socket.end();
+}
+
+function unchokeHandler(socket, pieces, queue)
+{
+    requestPiece(socket, pieces, queue);
 }
 
 function haveHandler(payload, socket, pieces, queue) {
@@ -70,16 +79,16 @@ function haveHandler(payload, socket, pieces, queue) {
 }
 
 function pieceHandler(socket, payload, pieces, queue) {
-    pieces.received[queue[0]] = true;
+   pieces.addReceived(queue[0]);
     queue.shift();
     requestPiece(socket, requested, queue);
 }
 
 function requestPiece(socket, pieces, queue) {
-    if (pieces.requested[queue[0]])
+    if (!pieces.needed(queue[0]))
         queue.shift();
     else {
-        pieces.requested[queue[0]] = true;
+        pieces.addRequested(queue[0]);
         socket.write(buildRequest(...));
     }
         
