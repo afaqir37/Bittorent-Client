@@ -721,3 +721,58 @@ Here's how it works in your code:
 - When you receive the piece, you remove it from the queue and request the next piece in the queue.
 
 This way, I'm only requesting one piece at a time from each peer. Faster peers will finish sending their piece sooner, and you'll request the next piece from them sooner. This allows faster peers to send more pieces over the same amount of time, speeding up the overall download.
+
+## Request Failures
+
+Right now we are adding the piece index to the requested array whenever we send a request. This way we know which pieces have already been requested and then we can avoid the next peer from requesting a duplicate piece.
+
+However, it’s possible for us to request a piece but never receive it. This is because a connection can drop at any time for whatever reason. Since we avoid requesting pieces that have been added to the requested array, these pieces will never be received.
+
+You might think we could just add pieces to the list when we receive them. But then between the time that the piece requested and received any other peer could also request that piece resulting in duplicate requests.
+
+The easiest solution is to maintain two lists, one for requested pieces and one for received pieces. We update the requested list at request time, and the received list at receive time. Then whenever we have requested all pieces but there are still pieces that we haven’t received, we copy the received list into the requested list, and that will allow us to rerequest those missing pieces.
+
+pieces.js: <br>
+
+```javascript
+export const Pieces = class {
+    constructor(size) {
+        this.requested = new Array(size).fill(false);
+        this.received = new Array(size).fill(false);
+    }
+
+    addRequested(pieceIndex) {
+        this.requested[pieceIndex] = true;
+    }
+
+    addReceived(pieceIndex) {
+        this.received[pieceIndex] = true;
+    }
+
+    needed(pieceIndex) {
+        if (this.requested.every(i => i === true)) {
+            this.requested = this.received.slice();
+        }
+        return !this.requested[pieceIndex];
+    }
+
+    isDone() {
+        return this.received.every(i => i === true);
+    }
+};
+```
+
+This class is essentially a tracker for the pieces of a file being downloaded in a peer-to-peer network. It helps to manage which pieces have been requested and which have been received, ensuring that all pieces are eventually received.
+
+- **constructor(size)**: This is the class constructor that is called when a new instance of the class is created. It takes a `size` parameter which represents the total number of pieces. It initializes two arrays, `requested` and `received`, of length `size` and fills them with `false`. This indicates that initially, no pieces have been requested or received.
+
+- **addRequested(pieceIndex)**: This method is used to mark a piece as requested. It takes a `pieceIndex` parameter and sets the corresponding index in the `requested` array to `true`.
+
+- **addReceived(pieceIndex)**: Similar to `addRequested`, this method marks a piece as received. It sets the corresponding index in the `received` array to `true`.
+
+- **needed(pieceIndex)**: This method checks if a piece is needed, i.e., it hasn't been requested yet. If all pieces have been requested (`this.requested` array is filled with `true`), it resets the `requested` array to match the `received` array. This allows any pieces that were requested but not received to be requested again. It then returns whether the piece at `pieceIndex` is needed.
+
+- **isDone()**: This method checks if all pieces have been received. It returns `true` if every element in the `received` array is `true`, indicating that all pieces have been received.
+
+This class is a crucial part of the file download process in a peer-to-peer network. It ensures that all pieces are requested and received, and handles the scenario where a piece might be requested but not received due to issues like dropped connections.
+

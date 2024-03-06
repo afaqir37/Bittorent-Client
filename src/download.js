@@ -3,15 +3,16 @@ import net from 'net';
 import { Buffer } from 'buffer';
 import { getPeers } from './tracker.js';
 import * as message from './message.js';
+import Pieces from './pieces.js';
 
 export const downloadTorrent = torrent => {
-    const requested = [];
+    const pieces = new Pieces();
     getPeers(torrent, peers => {
-        peers.forEach(peer => download(peer, torrent, requested));
+        peers.forEach(peer => download(peer, torrent, pieces));
     });
 };
 
-function download(peer, torrent, requested) {
+function download(peer, torrent, pieces) {
     const queue = [];
     const socket = net.Socket();
     socket.on('error', console.log);
@@ -19,7 +20,7 @@ function download(peer, torrent, requested) {
         socket.write(message.buildHandshake(torrent));
     });
 
-    onWholeMsg(socket, msg => msgHandler(msg, socket, requested, queue));
+    onWholeMsg(socket, msg => msgHandler(msg, socket, pieces, queue));
 
 }
 
@@ -53,31 +54,32 @@ function msgHandler(msg, socket, requested, queue) {
 
         if (m.id == 0) chokeHandler();
         if (m.id == 1) unchokeHandler();
-        if (m.id == 4) haveHandler(m.payload, requested, queue);
+        if (m.id == 4) haveHandler(m.payload, pieces, queue);
         if (m.id == 5) bitfieldHandler(m.payload);
-        if (m.id == 7) pieceHandler(socket, m.payload, requested, queue);
+        if (m.id == 7) pieceHandler(socket, m.payload, pieces, queue);
     }
 
 }
 
-function haveHandler(payload, socket, requested, queue) {
+function haveHandler(payload, socket, pieces, queue) {
     //...
     const pieceIndex = payload.readUInt32BE(0);
     queue.push(pieceIndex);
     if (queue.length == 1)
-        requestPiece(socket, requested, queue);
+        requestPiece(socket, pieces, queue);
 }
 
-function pieceHandler(socket, payload, requested, queue) {
+function pieceHandler(socket, payload, pieces, queue) {
+    pieces.received[queue[0]] = true;
     queue.shift();
     requestPiece(socket, requested, queue);
 }
 
-function requestPiece(socket, requested, queue) {
-    if (requested[queue[0]])
+function requestPiece(socket, pieces, queue) {
+    if (pieces.requested[queue[0]])
         queue.shift();
     else {
-        requested[queue[0]] = true;
+        pieces.requested[queue[0]] = true;
         socket.write(buildRequest(...));
     }
         
