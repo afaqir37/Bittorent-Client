@@ -776,3 +776,179 @@ This class is essentially a tracker for the pieces of a file being downloaded in
 
 This class is a crucial part of the file download process in a peer-to-peer network. It ensures that all pieces are requested and received, and handles the scenario where a piece might be requested but not received due to issues like dropped connections.
 
+## Pieces and Blocks
+
+The function message.buildRequest in the above code needs to take an object with an index, begin, and a length property. These are the required fields for the payload of a request message. But what are these fields for exactly? Well index is easy, it’s the piece index that is currently being passed in. What about begin and length?
+
+These two properties are necessary because sometimes a piece is too big for one message. Although there is some dispute about the best size, it is typically considered to be around 2^14 (16384) bytes. This is called a “block”, where a piece consists of one or more blocks. If the piece length is greater than the length of single block, then it should be broken up into blocks with one message sent for each block.
+
+So the “begin” field is the zero-based byte offset starting from the beginning of the piece, and the “length” is the length of the requested block. This is always going to be 2^14, except possibly the last block which might be less.
+
+torrent-parser.js <br>
+
+```javascript
+export const BLOCK_LEN = Math.pow(2, 14);
+
+export const pieceLen = (torrent, pieceIndex) => {
+    const totalPieceLen = bignum.fromBuffer(size(torrent)).toNumber();
+    const pieceLength = torrent.info['piece length']
+    const lastPieceLen = totalPieceLen % pieceLength;
+
+    const lastPieceIndex = Math.floor(totalPieceLen / pieceLength);
+    return (pieceIndex == lastPieceIndex) ? lastPieceLen : pieceLength;
+};
+
+export const blocksPerPiece = (torrent, pieceIndex) => {
+    const pieceLength = pieceLen(torrent, pieceIndex);
+    return Math.ceil(pieceLength / BLOCK_LEN);
+};
+
+export const blockLen = (torrent, pieceIndex, blockIndex) => {
+    const pieceLength = pieceLen(torrent, pieceIndex);
+    const lastBlockLen = pieceLength % BLOCK_LEN;
+    const lastBlockIndex = Math.floor(pieceLength / BLOCK_LEN);
+
+    return (blockIndex == lastBlockIndex) ? lastBlockLen : BLOCK_LEN;
+}
+```
+
+the above functions will help us determine the piece and block lengths for a given piece index.
+
+The `pieceLen` function is used to calculate the length of a piece given its index. It uses the `bignum` library to handle the `totalLength` variable because it's stored in an 8-byte buffer. The `totalLength` is the total size of the torrent file, and it's calculated from the `size` function. The `pieceLength` is a property of the torrent file, and it represents the length of each piece (except possibly the last one). The `lastPieceLen` is the length of the last piece, which is calculated as the remainder of the `totalLength` divided by the `pieceLength`. If the `pieceIndex` is the last piece index, `pieceLen` returns the `lastPieceLen`; otherwise, it returns the `pieceLength`.
+
+The `blockLen` function is similar to `pieceLen`, but it calculates the length of a block given a piece index and a block index. The `pieceLength` is calculated using the `pieceLen` function. The `lastBlockLen` is the length of the last block in the piece, which is calculated as the remainder of the `pieceLength` divided by the `BLOCK_LEN` (which is 2^14 bytes by convention). If the `blockIndex` is the last block index, `blockLen` returns the `lastBlockLen`; otherwise, it returns the `BLOCK_LEN`.
+
+In both functions, the last piece or block might be shorter than a full piece or block. This is why there's a special case for the last piece or block.
+
+queue.js <br>
+
+```javascript
+export const Queue = class {
+    #torrent;
+    #queue;
+    
+    constructor(torrent) {
+        this.#torrent = torrent;
+        this.#queue = [];
+        this.choked = true;
+    }
+
+    queue(pieceIndex) {
+        const nBlocks = parse.blocksPerPiece(this.#torrent, pieceIndex);
+        for (let i = 0; i < nBlocks; i++) {
+            const pieceBlock = {
+                index: pieceIndex,
+                begin: i * parse.BLOCK_LEN,
+                length: parse.blockLen(this.#torrent, pieceIndex, i)
+            };
+            this.#queue.push(pieceBlock);
+        }
+    }
+
+    deque() { return this.#queue.shift(); }
+
+    peek() { return this.#queue[0]; }
+
+    length() { return this.#queue.length; }
+
+
+};
+```
+
+Now the queue is a list of pieceBlock objects. I admit the terminology is getting a little confusing but I’m referring to the object built in the queue method that have index, begin, and length properties. These pieceBlock objects have the same structure as the payload when we send a request message (check the buildRequest function in message.js), so we can pass them to the request builder directly.
+
+More generally, from now on we want to deal with these objects instead of the piece index, because it also gives us information about the block. Here’s an outline of when/where we would use these objects:
+
+When we receive a “have” message, we get a piece index, but we fill the queue with these piece objects, one for each block for each piece.
+
+When we deque an object we can pass it to the request builder and make a request for the associated block.
+
+The Pieces class that tracks requested and received pieces should be able to add a pieceBlock. We’ll see this implemented next.
+
+Note that the constructor need to get passed a torrent object now, instead of just the number of pieces.
+
+Here is the Pieces class altered to handle blocks :
+
+pieces.js <br>
+
+```javascript
+export const Pieces = class {
+    constructor(torrent) {
+        function buildPiecesArray() {
+            const nPieces = size(torrent) / 20;
+            const arr = new Array(nPieces).fill(null);
+            return arr.map((_, i) => new Array(blocksPerPiece(torrent, i)).fill(false));
+        }
+
+        this.requested = buildPiecesArray();
+        this.received = buildPiecesArray();
+    }
+
+    addRequested(pieceBlock) {
+        const blockIndex = pieceBlock.begin / BLOCK_LEN;
+        this.requested[pieceBlock.index][blockIndex] = true;
+    }
+
+    addReceived(pieceIndex) {
+        const blockIndex = pieceBlock.begin / BLOCK_LEN;
+        this.received[pieceBlock.index][blockIndex] = true;
+    }
+
+    needed(pieceBlock) {
+        if (this.requested.every(blocks => blocks.every(i => i))) {
+            this.requested = this.received.map(blocks => blocks.slice());
+        }
+        const blockIndex = pieceBlock.begin / BLOCK_LEN;
+        return !this.requested[pieceBlock.pieceIndex][blockIndex];
+    }
+
+    isDone() {
+        return this.received.every(blocks => blocks.every(i => i));
+    }
+};
+```
+Now the requested and received arrays, which used to hold the status of a piece index, now holds an array of arrays, where the inner arrays hold the status of a block at a give piece index. So if you wanted to find out the status of a block at index 1 for a piece at index 7, you could look up _requested[7][1] and check if it’s set to true. As before all values are initially set to false.
+
+Also note that these methods expect to be passed a pieceBlock, the same ones we saw in the Queue class. This means when we peek a pieceBlock from a queue and request it, or deque a pieceBlock when we’ve received it, we can pass the pieceBlock directly to addRequested or addReceived respectively.
+
+Finally there’s a few changes that need to be made in download.js where we use the Queue and Pieces classes:
+
+download.js <br>
+
+```javascript
+export const downloadTorrent = torrent => {
+    const pieces = new Pieces(torrent);
+    getPeers(torrent, peers => {
+        peers.forEach(peer => download(peer, torrent, pieces));
+    });
+};
+
+function download(peer, torrent, pieces) {
+    const queue = new Queue(torrent);
+    const socket = net.Socket();
+    socket.on('error', console.log);
+    socket.connect(peer.port, peer.ip, () => {
+        socket.write(message.buildHandshake(torrent));
+    });
+
+    onWholeMsg(socket, msg => msgHandler(msg, socket, pieces, queue));
+
+}
+
+function requestPiece(socket, pieces, queue) {
+    if (queue.choked)
+        return null;
+
+    while (queue.length()) {
+        const pieceBlock = queue.deque();
+        if (pieces.needed(pieceBlock)) {
+            socket.write(message.buildRequest(pieceBlock));
+            pieces.addRequested(pieceBlock);
+            break;
+        }
+    }  
+}
+```
+
+This code is mostly the same as before except that we’re passing and using our new Pieces and Queue classes. Also we now use the pieceBlock object instead of just the piece index.
+

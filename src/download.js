@@ -97,8 +97,7 @@ function requestPiece(socket, pieces, queue) {
             pieces.addRequested(pieceBlock);
             break;
         }
-    }
-        
+    }  
 }
 
 
