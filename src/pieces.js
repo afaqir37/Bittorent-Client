@@ -1,27 +1,38 @@
 'use strict';
 
+import { BLOCK_LEN, blocksPerPiece, size } from "./torrent-parser";
+
 export const Pieces = class {
-    constructor(size) {
-        this.requested = new Array(size).fill(false);
-        this.received = new Array(size).fill(false);
+    constructor(torrent) {
+        function buildPiecesArray() {
+            const nPieces = size(torrent) / 20;
+            const arr = new Array(nPieces).fill(null);
+            return arr.map((_, i) => new Array(blocksPerPiece(torrent, i)).fill(false));
+        }
+
+        this.requested = buildPiecesArray();
+        this.received = buildPiecesArray();
     }
 
-    addRequested(pieceIndex) {
-        this.requested[pieceIndex] = true;
+    addRequested(pieceBlock) {
+        const blockIndex = pieceBlock.begin / BLOCK_LEN;
+        this.requested[pieceBlock.index][blockIndex] = true;
     }
 
     addReceived(pieceIndex) {
-        this.received[pieceIndex] = true;
+        const blockIndex = pieceBlock.begin / BLOCK_LEN;
+        this.received[pieceBlock.index][blockIndex] = true;
     }
 
-    needed(pieceIndex) {
-        if (this.requested.every(i => i === true)) {
-            this.requested = this.received.slice();
+    needed(pieceBlock) {
+        if (this.requested.every(blocks => blocks.every(i => i))) {
+            this.requested = this.received.map(blocks => blocks.slice());
         }
-        return !this.requested[pieceIndex];
+        const blockIndex = pieceBlock.begin / BLOCK_LEN;
+        return !this.requested[pieceBlock.pieceIndex][blockIndex];
     }
 
     isDone() {
-        return this.received.every(i => i === true);
+        return this.received.every(blocks => blocks.every(i => i));
     }
 };

@@ -1,5 +1,5 @@
-import { infoHash } from '../torrent-parser.js';
-import { genId } from '../util.js';
+import { infoHash } from './torrent-parser.js';
+import { genId } from './util.js';
 import { Buffer } from 'buffer';
 
 export const buildHandshake = torrent => {

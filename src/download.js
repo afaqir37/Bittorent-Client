@@ -3,17 +3,19 @@ import net from 'net';
 import { Buffer } from 'buffer';
 import { getPeers } from './tracker.js';
 import * as message from './message.js';
-import Pieces from './pieces.js';
+import { Pieces } from './pieces.js';
+import { size } from '.torrent-parser.js';
+import { Queue } from './queue.js';
 
 export const downloadTorrent = torrent => {
-    const pieces = new Pieces();
+    const pieces = new Pieces(torrent);
     getPeers(torrent, peers => {
         peers.forEach(peer => download(peer, torrent, pieces));
     });
 };
 
 function download(peer, torrent, pieces) {
-    const queue = [];
+    const queue = new Queue(torrent);
     const socket = net.Socket();
     socket.on('error', console.log);
     socket.connect(peer.port, peer.ip, () => {
@@ -85,11 +87,16 @@ function pieceHandler(socket, payload, pieces, queue) {
 }
 
 function requestPiece(socket, pieces, queue) {
-    if (!pieces.needed(queue[0]))
-        queue.shift();
-    else {
-        pieces.addRequested(queue[0]);
-        socket.write(buildRequest(...));
+    if (queue.choked)
+        return null;
+
+    while (queue.length()) {
+        const pieceBlock = queue.deque();
+        if (pieces.needed(pieceBlock)) {
+            socket.write(message.buildRequest(pieceBlock));
+            pieces.addRequested(pieceBlock);
+            break;
+        }
     }
         
 }
