@@ -952,3 +952,55 @@ function requestPiece(socket, pieces, queue) {
 
 This code is mostly the same as before except that we’re passing and using our new Pieces and Queue classes. Also we now use the pieceBlock object instead of just the piece index.
 
+## Have and bitfield
+
+The `haveHandler()` function has been modified to utilize the `queue` class. This function handles the `have` message in the BitTorrent protocol. When a `have` message is received, indicating that a peer has a piece of the file, the piece index is extracted from the payload and added to the queue. If the queue was previously empty, a request for a piece is made. The queue management is handled using the methods provided by the `queue` class.
+
+download.js
+```javascript
+function haveHandler(payload, socket, pieces, queue) {
+    const pieceIndex = payload.readUInt32BE(0);
+    const queueEmpty = queue.length() == 0;
+    queue.queue(pieceIndex);
+    if (queueEmpty)
+        requestPiece(socket, pieces, queue);
+}
+```
+
+`bitfieldHandler()`: <br>
+
+```javascript
+function bitfieldHandler(socket, pieces, queue, payload) {
+    const queueEmpty = queue.length() == 0;
+    payload.forEach((byte, i) => {
+        for (let j = 0; j < 8; j++) {
+            if (byte % 2)
+                queue.queue(i * 8 + 7 - j);
+            byte = Math.floor(byte / 2);
+        }
+    });
+    if (queueEmpty)
+        requestPiece(socket, pieces, queue);
+}
+```
+
+The `bitfieldHandler()` function is used to handle the `bitfield` message in the BitTorrent protocol. The `bitfield` message is sent by a peer to indicate which pieces of the file it has. The pieces are represented as a bitfield, with each bit corresponding to a piece.
+
+Here's a breakdown of the `bitfieldHandler()` function:
+
+- `const queueEmpty = queue.length() == 0;`: This line checks if the queue is empty before the new pieces are added. This is used later to decide whether to request a piece.
+
+- `payload.forEach((byte, i) => {...});`: This line iterates over each byte in the payload. Each byte represents 8 pieces, with the least significant bit (LSB) representing the first piece and the most significant bit (MSB) representing the last piece.
+
+- `for (let j = 0; j < 8; j++) {...}`: This loop iterates over each bit in the byte.
+
+- `if (byte % 2) queue.queue(i * 8 + 7 - j);`: If the current bit is set (i.e., the peer has the piece), the piece index is added to the queue. The piece index is calculated as `i * 8 + 7 - j`.
+
+- `byte = Math.floor(byte / 2);`: This line shifts the byte to the right by one bit. This is equivalent to dividing the byte by 2 and rounding down to the nearest integer.
+
+- `if (queueEmpty) requestPiece(socket, pieces, queue);`: After the new pieces are added to the queue, if the queue was initially empty, it requests a piece from the peer. This is done by calling the `requestPiece()` function with the socket, the pieces, and the queue as arguments.
+
+In summary, the `bitfieldHandler()` function processes the `bitfield` message from a peer, adds the indices of the pieces that the peer has to the queue, and requests a piece from the peer if the queue was initially empty.
+
+
+

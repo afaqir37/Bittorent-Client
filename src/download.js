@@ -57,7 +57,7 @@ function msgHandler(msg, socket, pieces, queue) {
         if (m.id == 0) chokeHandler(socket);
         if (m.id == 1) unchokeHandler(socket, pieces, queue);
         if (m.id == 4) haveHandler(m.payload, pieces, queue);
-        if (m.id == 5) bitfieldHandler(m.payload);
+        if (m.id == 5) bitfieldHandler(socket, pieces, queue, m.payload);
         if (m.id == 7) pieceHandler(socket, m.payload, pieces, queue);
     }
 
@@ -75,8 +75,22 @@ function unchokeHandler(socket, pieces, queue)
 function haveHandler(payload, socket, pieces, queue) {
     //...
     const pieceIndex = payload.readUInt32BE(0);
-    queue.push(pieceIndex);
-    if (queue.length == 1)
+    const queueEmpty = queue.length() == 0;
+    queue.queue(pieceIndex);
+    if (queueEmpty)
+        requestPiece(socket, pieces, queue);
+}
+
+function bitfieldHandler(socket, pieces, queue, payload) {
+    const queueEmpty = queue.length() == 0;
+    payload.forEach((byte, i) => {
+        for (let j = 0; j < 8; j++) {
+            if (byte % 2)
+                queue.queue(i * 8 + 7 - j);
+            byte = Math.floor(byte / 2);
+        }
+    });
+    if (queueEmpty)
         requestPiece(socket, pieces, queue);
 }
 
