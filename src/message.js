@@ -6,7 +6,7 @@ export const buildHandshake = torrent => {
     const buff = Buffer.alloc(68);
 
     //pstrlen
-    buff.writeUInt8BE(19, 0);
+    buff.writeUInt8(19, 0);
 
     //pstr
     buff.write('BitTorrent protocol', 1);
@@ -19,7 +19,7 @@ export const buildHandshake = torrent => {
     infoHash(torrent).copy(buff, 28);
 
     // peer id
-    buff.write(genId(), 48);
+    genId().copy(buff, 48);
 
     return buff;
 };

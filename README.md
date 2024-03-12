@@ -1002,5 +1002,73 @@ Here's a breakdown of the `bitfieldHandler()` function:
 
 In summary, the `bitfieldHandler()` function processes the `bitfield` message from a peer, adds the indices of the pieces that the peer has to the queue, and requests a piece from the peer if the queue was initially empty.
 
+## Piece response handler
 
+In this final section, we will write out the `pieceHandler`. This function is triggered when we receive the actual bytes of the piece we requested.
 
+Here are the main tasks that the `pieceHandler` function will perform:
+
+1. **Add the piece to the list of received pieces.** This will keep track of the pieces we have already downloaded.
+
+2. **Write the bytes to file.** This will save the downloaded piece to our local storage.
+
+3. **Request the next needed piece.** If there are more pieces to download, the function will automatically request the next one.
+
+4. **Close the socket connection if there are no more pieces to download.** If we have downloaded all the pieces, the function will close the socket connection to free up resources.
+
+```javascript
+function pieceHandler(socket, pieceResp, pieces, queue, torrent, file) {
+   pieces.addReceived(pieceResp);
+   
+   const offset = pieceResp.index * torrent.info['piece length'] + pieceResp.begin;
+   fs.write(file, pieceResp.block, 0, pieceResp.block.length, offset, () => {});
+
+   if (pieces.isDone()) {
+    console.log('DONE!');
+    socket.end();
+    try { 
+        fs.closeSync(file);
+    } catch(e) {}
+   } else {
+    requestPiece(socket, pieces, queue);
+   }
+}
+```
+
+The `pieceHandler` function is responsible for handling the pieces of the torrent file that are received from the peer. It takes six parameters: `socket`, `pieceResp`, `pieces`, `queue`, `torrent`, and `file`.
+
+Here's a breakdown of what each line of the function does:
+
+1. `pieces.addReceived(pieceResp);` - This line adds the received piece to the list of received pieces.
+
+2. `const offset = pieceResp.index * torrent.info['piece length'] + pieceResp.begin;` - This line calculates the offset where the received piece should be written in the file. It multiplies the index of the piece by the length of each piece (as specified in the torrent info) and adds the beginning byte index of the block within the piece.
+
+3. `fs.write(file, pieceResp.block, 0, pieceResp.block.length, offset, () => {});` - This line writes the received piece to the file at the calculated offset. It uses Node.js's `fs.write` method, which takes the file descriptor, the data to write, the start position in the data, the number of bytes to write, the position in the file where to start writing, and a callback function to call when the write operation is complete.
+
+4. `if (pieces.isDone()) { ... } else { ... }` - This `if` statement checks if all pieces have been received. If they have (`pieces.isDone()` returns `true`), it logs "DONE!" to the console, ends the socket connection with the peer, and closes the file. If not all pieces have been received, it requests the next piece from the peer.
+
+`downloadTorrent() :` <br>
+
+```javascript
+export const downloadTorrent = (torrent, path) => {
+    const pieces = new Pieces(torrent);
+    const file = fs.openSync(path, 'w');
+    getPeers(torrent, peers => {
+        peers.forEach(peer => download(peer, torrent, pieces, file));
+    });
+};
+```
+
+The `downloadTorrent` function is a key part of your JavaScript project that deals with downloading a torrent file. This function is exported, meaning it can be imported and used in other parts of your project.
+
+The function takes two parameters: `torrent`, which is the metadata of the torrent you want to download, and `path`, which is the location on your file system where you want to save the downloaded file.
+
+Inside the function, a new instance of the `Pieces` class is created, with the `torrent` metadata passed to the constructor. This `Pieces` object, stored in the `pieces` variable, is used to manage the pieces of the torrent that need to be downloaded.
+
+Next, the `fs.openSync` function from Node.js's built-in `fs` (file system) module is used to synchronously open a file at the specified `path`. The 'w' argument means that the file is opened for writing. The function returns a file descriptor, which is a unique integer that the operating system assigns to the opened file. This file descriptor is stored in the `file` variable and will be used later to write data to the file.
+
+The `getPeers` function is then called with the `torrent` metadata and a callback function. The purpose of `getPeers` is to find peers that are sharing the torrent. When it finds peers, it calls the provided callback function, passing the peers as an argument.
+
+Inside the callback function, the `Array.prototype.forEach` method is used to iterate over each peer. For each peer, the `download` function is called, with the peer, the `torrent` metadata, the `Pieces` instance, and the file descriptor passed as arguments. This initiates the download of the torrent from each peer.
+
+In summary, the `downloadTorrent` function sets up the necessary data structures, opens the file for writing, finds peers, and starts the download process.

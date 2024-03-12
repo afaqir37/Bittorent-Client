@@ -12,7 +12,7 @@ export const open = (filepath) => {
 export const size = torrent => {
     const size = torrent.info.files ?
         torrent.info.files.map(file => file.length).reduce((a, b) => a + b) :
-        torrent.info.length;
+        torrent.info.pieces.length;
 
     return bignum.toBuffer(size, { size: 8 });
 };

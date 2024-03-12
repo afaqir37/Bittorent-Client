@@ -1,12 +1,11 @@
 'use strict';
 
-import { BLOCK_LEN, blocksPerPiece, size } from "./torrent-parser";
+import { BLOCK_LEN, blocksPerPiece, size } from "./torrent-parser.js";
 
 export const Pieces = class {
     constructor(torrent) {
         function buildPiecesArray() {
-            const nPieces = size(torrent) / 20;
-            const arr = new Array(nPieces).fill(null);
+            const arr = new Array(torrent.info.pieces.length).fill(null);
             return arr.map((_, i) => new Array(blocksPerPiece(torrent, i)).fill(false));
         }
 
@@ -19,7 +18,7 @@ export const Pieces = class {
         this.requested[pieceBlock.index][blockIndex] = true;
     }
 
-    addReceived(pieceIndex) {
+    addReceived(pieceBlock) {
         const blockIndex = pieceBlock.begin / BLOCK_LEN;
         this.received[pieceBlock.index][blockIndex] = true;
     }
